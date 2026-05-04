@@ -12,8 +12,8 @@ ROCKET_H = 72
 ROCKET_MASS = 5.0
 
 THRUST_FORCE = 2800.0
-FUEL_CAPACITY = 100.0
-FUEL_BURN = 18.0
+FUEL_CAPACITY = 300.0
+FUEL_BURN = 12.0
 PARTICLE_LIFE = 0.35
 
 
@@ -167,22 +167,14 @@ class Rocket:
             self.fuel = max(0.0, self.fuel - FUEL_BURN * dt * command.thrust)
             dx, dy = local_y(self.body.angle)
             f = THRUST_FORCE * command.thrust
-            self.body.apply_force_at_local_point((f * dx, f * dy), (0, 0))
+            self.body.apply_force_at_world_point((f * dx, f * dy), self.body.position)
             self.spawn_particles()
         if command.torque != 0:
-            self.body.apply_force_at_local_point(
-                (command.torque, 0), (0, self.height / 2))
+            self.body.torque += command.torque
 
-    def update(self, dt, simulating, keys=None):
+    def update(self, dt, simulating):
         self.thrusting = False
         if simulating and not self.landed and not self.crashed:
-            if keys is not None and keys[pygame.K_SPACE] and self.fuel > 0:
-                self.thrusting = True
-                self.fuel = max(0.0, self.fuel - FUEL_BURN * dt)
-                dx, dy = local_y(self.body.angle)
-                self.body.apply_force_at_local_point(
-                    (THRUST_FORCE * dx, THRUST_FORCE * dy), (0, 0))
-                self.spawn_particles()
             self.check_landing()
         self.particles = [p for p in self.particles if p.update(dt)]
 

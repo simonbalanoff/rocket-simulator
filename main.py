@@ -115,7 +115,7 @@ def main():
     clock = pygame.time.Clock()
 
     space = pymunk.Space()
-    space.gravity = (0, 500)
+    space.gravity = (0, 980)
 
     ground_seg = pymunk.Segment(
         space.static_body,
@@ -246,8 +246,8 @@ def main():
             tel = rocket.telemetry()
             command = autopilot.update(tel, dt)
             rocket.apply_autopilot(command, dt)
-            rocket.update(dt, simulating=True, keys=keys)
             space.step(dt)
+            rocket.update(dt, simulating=True)
         else:
             rocket.update(dt, simulating=False)
 
