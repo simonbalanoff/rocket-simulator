@@ -4,6 +4,13 @@ A 2D rocket landing simulator built with Pygame and Pymunk. A fully autonomous a
 
 ---
 
+## Demo
+https://github.com/user-attachments/assets/ae00e4d1-776c-4bc3-8fef-9c34b12ced33
+
+*Autonomous rocket landing simulation - Kalman-filtered autopilot, multi-phase guidance controller*
+
+---
+
 ## Features
 
 - **Autonomous autopilot** - multi-phase flight controller (launch → ascent → coast → descent → terminal) handles the entire mission without any manual input
@@ -11,7 +18,7 @@ A 2D rocket landing simulator built with Pygame and Pymunk. A fully autonomous a
 - **Physics simulation** - rigid-body dynamics and collision detection via Pymunk (2D Chipmunk wrapper)
 - **Moveable landing pad** - drag the landing platform anywhere before launch; the autopilot recalculates its trajectory accordingly
 - **Live telemetry HUD** - altitude, velocity, fuel, angle, and autopilot phase displayed in real time
-- **Pannable / zoomable viewport** - scroll-wheel zoom, middle-mouse pan, toolbar zoom buttons
+- **Pannable/zoomable viewport** - scroll-wheel zoom, middle-mouse pan, toolbar zoom buttons
 - **Resizable window** - layout adapts to any window size
 
 ---
@@ -93,7 +100,7 @@ The autopilot runs a closed-loop guidance cycle every frame (`autopilot.update(t
 
 **Attitude control** - a PD controller computes a torque command from the angle error and angular rate at each phase, with phase-specific gains.
 
-**Throttle** - vertical throttle is computed from the difference between a reference descent rate and the current vertical velocity, corrected for tilt angle so thrust is always sufficient to counteract gravity along the vertical axis.
+**Throttle** - vertical throttle is computed from the difference between a reference descent rate and the current vertical velocity, corrected for tilt angle, so thrust is always sufficient to counteract gravity along the vertical axis.
 
 ---
 
