@@ -99,7 +99,7 @@ class LandingPlatform:
         self.build_seg()
 
     def get_center_x(self):
-        return self.x
+        return self.x + self.width / 2
 
     def get_surface_y(self):
         return self.y

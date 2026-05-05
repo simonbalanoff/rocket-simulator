@@ -58,25 +58,80 @@ def draw_background(screen, pan_x, pan_y, zoom, W, H):
 
 
 def draw_ground(screen, ground_seg, pan_x, pan_y, zoom, W, H):
+    import math
     body = ground_seg.body
-    gx1, gy1 = world_to_screen(ground_seg.a.x + body.position.x,
-                               ground_seg.a.y + body.position.y,
-                               pan_x, pan_y, zoom)
-    if gy1 < H:
-        ground_rect = pygame.Rect(0, int(gy1), W, H - int(gy1))
-        pygame.draw.rect(screen, (128, 86, 65), ground_rect)
+    _, gy1 = world_to_screen(0, ground_seg.a.y + body.position.y, pan_x, pan_y, zoom)
+    gy1 = int(gy1)
+    if gy1 >= H:
+        return
 
-    thick = max(2, int(8 * zoom))
-    pygame.draw.line(screen, (34, 139, 34), (0, gy1), (W, gy1), thick)
+    # --- Soil fill (three depth bands for a bit of richness) ---
+    soil_bands = [
+        (0.00, (88,  62, 48)),   # top: warm dark soil
+        (0.25, (72,  50, 38)),   # mid
+        (0.55, (58,  40, 30)),   # deep
+    ]
+    total_h = H - gy1
+    for i, (frac, col) in enumerate(soil_bands):
+        y0 = gy1 + int(frac * total_h)
+        if i + 1 < len(soil_bands):
+            y1 = gy1 + int(soil_bands[i + 1][0] * total_h)
+        else:
+            y1 = H
+        if y1 > y0:
+            pygame.draw.rect(screen, col, pygame.Rect(0, y0, W, y1 - y0))
 
-    pygame.draw.line(screen, (50, 205, 50), (0, gy1 - 1), (W, gy1 - 1), max(1, thick // 3))
+    # --- Grass strip ---
+    grass_h = max(3, int(9 * zoom))
+    pygame.draw.rect(screen, (56, 120, 56), pygame.Rect(0, gy1 - grass_h, W, grass_h))
+    # Lighter top highlight on grass
+    pygame.draw.rect(screen, (78, 155, 68), pygame.Rect(0, gy1 - grass_h, W, max(1, int(3 * zoom))))
+
+    # --- Grass tufts: small vertical strokes that pan with the world ---
+    tuft_spacing = 28   # world units between tufts
+    tuft_col_a = (48, 140, 52)
+    tuft_col_b = (65, 160, 58)
+    if zoom > 0.2:
+        world_left  = -pan_x / zoom
+        world_right = (W - pan_x) / zoom
+        first = int(world_left / tuft_spacing) * tuft_spacing
+        x_w = first
+        idx = 0
+        while x_w < world_right:
+            sx = int(x_w * zoom + pan_x)
+            col = tuft_col_a if idx % 2 == 0 else tuft_col_b
+            h_tuft = max(2, int((4 + (idx % 3) * 2) * zoom))
+            w_tuft = max(1, int(2 * zoom))
+            pygame.draw.rect(screen, col,
+                             pygame.Rect(sx - w_tuft // 2,
+                                         gy1 - grass_h - h_tuft,
+                                         w_tuft, h_tuft))
+            x_w += tuft_spacing
+            idx += 1
+
+    # --- Soil surface pebble dots ---
+    pebble_spacing = 45
+    pebble_col = (105, 78, 60)
+    if zoom > 0.3:
+        world_left  = -pan_x / zoom
+        world_right = (W - pan_x) / zoom
+        first = int(world_left / pebble_spacing) * pebble_spacing
+        x_w = first
+        idx = 0
+        while x_w < world_right:
+            sx = int(x_w * zoom + pan_x)
+            sy = gy1 + max(4, int((6 + (idx % 4) * 3) * zoom))
+            r  = max(1, int((1 + idx % 2) * zoom))
+            pygame.draw.circle(screen, pebble_col, (sx, sy), r)
+            x_w += pebble_spacing
+            idx += 1
 
 
 def draw_launch_pad(screen, pad_x, pad_y, pan_x, pan_y, zoom):
     pw = LAUNCH_PAD_W * zoom
     ph = LAUNCH_PAD_H * zoom
     leg = LAUNCH_PAD_LEG * zoom
-    leg_w = max(4, int(10 * zoom))
+    leg_w = max(2, int(5 * zoom))
 
     cx, cy = world_to_screen(pad_x, pad_y, pan_x, pan_y, zoom)
     cy -= (20 * zoom)
@@ -298,8 +353,6 @@ def main():
             platform.handle_keys(keys)
 
         if state == SIMULATING:
-            if not rocket.landed and not rocket.crashed:
-                rocket.check_landing()
             tel = rocket.telemetry()
             command = autopilot.update(tel, dt)
             rocket.apply_autopilot(command, dt)
@@ -310,8 +363,8 @@ def main():
 
         draw_background(screen, pan_x, pan_y, zoom, W, H)
         platform.draw(screen, pan_x, pan_y, zoom)
-        draw_launch_pad(screen, LAUNCH_PAD_X, GROUND_Y, pan_x, pan_y, zoom)
         draw_ground(screen, ground_seg, pan_x, pan_y, zoom, W, H)
+        draw_launch_pad(screen, LAUNCH_PAD_X, GROUND_Y, pan_x, pan_y, zoom)
 
         if state == PLACEMENT and toolbar.active == "move":
             platform.draw_gizmo(screen, pan_x, pan_y, zoom)
