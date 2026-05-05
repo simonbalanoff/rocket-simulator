@@ -2,9 +2,9 @@ import pygame
 import pymunk
 import math
 
-PLATFORM_W = 120
+PLATFORM_W = 300
 PLATFORM_H = 16
-PLATFORM_LEG_H = 28
+PLATFORM_LEG_H = 128
 
 AXIS_LEN = 70
 AXIS_HIT_R = 14
@@ -73,8 +73,8 @@ class LandingPlatform:
         half = self.width / 2
         self.seg = pymunk.Segment(
             self.space.static_body,
-            (self.x - half, self.y),
-            (self.x + half, self.y),
+            (self.x - half, self.y - self.height - 10),
+            (self.x + half, self.y - self.height - 10),
             4,
         )
         self.seg.friction = 1.0
@@ -99,7 +99,7 @@ class LandingPlatform:
         self.build_seg()
 
     def get_center_x(self):
-        return self.x + self.width
+        return self.x
 
     def get_surface_y(self):
         return self.y
@@ -174,8 +174,8 @@ class LandingPlatform:
         cx, cy = world_to_screen(self.x, self.y, pan_x, pan_y, zoom)
         pw = self.width * zoom
         ph = PLATFORM_H * zoom
-        leg_h = PLATFORM_LEG_H * zoom
-        leg_w = max(2, 4 * zoom)
+        leg_h = self.ground_y
+        leg_w = max(4, 10 * zoom)
 
         leg_offsets = [-pw * 0.35, pw * 0.35]
         for lx_off in leg_offsets:
@@ -183,15 +183,6 @@ class LandingPlatform:
             leg_top = int(cy)
             leg_bot = int(cy + leg_h)
             pygame.draw.line(screen, (80, 95, 120), (lx, leg_top), (lx, leg_bot), max(1, int(leg_w)))
-
-        # Foot pads
-        foot_w = int(pw * 0.18)
-        for lx_off in leg_offsets:
-            lx = int(cx + lx_off)
-            foot_y = int(cy + leg_h)
-            pygame.draw.line(screen, (70, 85, 110),
-                             (lx - foot_w, foot_y), (lx + foot_w, foot_y),
-                             max(1, int(3 * zoom)))
 
         deck_rect = pygame.Rect(int(cx - pw / 2), int(cy - ph), int(pw), int(ph))
         pygame.draw.rect(screen, (52, 64, 90), deck_rect, border_radius=max(1, int(3 * zoom)))

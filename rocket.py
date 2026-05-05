@@ -228,17 +228,20 @@ class Rocket:
             ):
                 return
 
+            on_landing_deck = (
+                    abs(bottom_y - ld["landing_surface_y"]) < 50
+                    and abs(bx - ld["landing_x"]) <= ld["landing_half_w"] + 25
+            )
             stopped_on_landing_deck = (
-                    speed < 15
-                    and abs(self.body.velocity.y) < 15
-                    and abs(bottom_y - ld["landing_surface_y"]) < 22
-                    and abs(bx - ld["landing_x"]) <= ld["landing_half_w"] + 18
+                    on_landing_deck
+                    and speed < 30
+                    and abs(self.body.velocity.y) < 25
             )
         else:
             near_surface = bottom_y >= self.ground_y - 8
             stopped_on_landing_deck = (
-                    speed < 15
-                    and abs(self.body.velocity.y) < 15
+                    speed < 30
+                    and abs(self.body.velocity.y) < 25
                     and bottom_y < self.ground_y - 12
             )
             if near_surface or stopped_on_landing_deck:
@@ -252,6 +255,8 @@ class Rocket:
         if near_surface or stopped_on_landing_deck:
             if speed < 80 and angle < math.radians(20):
                 self.landed = True
+                self.body.velocity = (0, 0)
+                self.body.angular_velocity = 0
             elif speed >= 80 or angle >= math.radians(35):
                 self.crashed = True
 

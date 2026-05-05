@@ -76,7 +76,7 @@ def draw_launch_pad(screen, pad_x, pad_y, pan_x, pan_y, zoom):
     pw = LAUNCH_PAD_W * zoom
     ph = LAUNCH_PAD_H * zoom
     leg = LAUNCH_PAD_LEG * zoom
-    leg_w = max(2, int(5 * zoom))
+    leg_w = max(4, int(10 * zoom))
 
     cx, cy = world_to_screen(pad_x, pad_y, pan_x, pan_y, zoom)
     cy -= (20 * zoom)
@@ -298,6 +298,8 @@ def main():
             platform.handle_keys(keys)
 
         if state == SIMULATING:
+            if not rocket.landed and not rocket.crashed:
+                rocket.check_landing()
             tel = rocket.telemetry()
             command = autopilot.update(tel, dt)
             rocket.apply_autopilot(command, dt)
@@ -307,9 +309,9 @@ def main():
             rocket.update(dt, simulating=False)
 
         draw_background(screen, pan_x, pan_y, zoom, W, H)
-        draw_ground(screen, ground_seg, pan_x, pan_y, zoom, W, H)
-        draw_launch_pad(screen, LAUNCH_PAD_X, GROUND_Y, pan_x, pan_y, zoom)
         platform.draw(screen, pan_x, pan_y, zoom)
+        draw_launch_pad(screen, LAUNCH_PAD_X, GROUND_Y, pan_x, pan_y, zoom)
+        draw_ground(screen, ground_seg, pan_x, pan_y, zoom, W, H)
 
         if state == PLACEMENT and toolbar.active == "move":
             platform.draw_gizmo(screen, pan_x, pan_y, zoom)
