@@ -47,6 +47,9 @@ GIZMO_ARC_A = (255, 200, 60)
 
 PHASE_COL = {
     "idle": TEXT_LIGHT,
+    "launch": (215, 90, 120),
+    "ascent": (120, 95, 210),
+    "coast": (110, 150, 200),
     "descent": (60, 130, 215),
     "terminal": (215, 135, 18),
     "landed": OK_COL,

@@ -11,7 +11,7 @@ ROCKET_W = 22
 ROCKET_H = 72
 ROCKET_MASS = 5.0
 
-THRUST_FORCE = 2800.0
+THRUST_FORCE = 5600.0
 FUEL_CAPACITY = 300.0
 FUEL_BURN = 12.0
 PARTICLE_LIFE = 0.35
@@ -112,6 +112,7 @@ class Rocket:
         self.particles = []
         self.landed = False
         self.crashed = False
+        self._landing_detection = None
 
         self.body = None
         self.shape = None
@@ -159,7 +160,27 @@ class Rocket:
         self.particles.clear()
         self.landed = False
         self.crashed = False
+        self._landing_detection = None
         self.build_kinematic(self.placement_x, self.placement_y)
+
+    def configure_landing_detection(
+            self,
+            *,
+            landing_x,
+            landing_surface_y,
+            landing_half_w,
+            launch_x,
+            launch_surface_y,
+            launch_half_w,
+    ):
+        self._landing_detection = {
+            "landing_x": float(landing_x),
+            "landing_surface_y": float(landing_surface_y),
+            "landing_half_w": float(landing_half_w),
+            "launch_x": float(launch_x),
+            "launch_surface_y": float(launch_surface_y),
+            "launch_half_w": float(launch_half_w),
+        }
 
     def apply_autopilot(self, command, dt):
         if command.thrust > 0 and self.fuel > 0:
@@ -197,7 +218,38 @@ class Rocket:
         if angle > math.pi:
             angle = 2 * math.pi - angle
         bottom_y = by + (self.height / 2) * math.cos(self.body.angle)
-        if bottom_y >= self.ground_y - 8:
+
+        ld = self._landing_detection
+        if ld is not None:
+            if (
+                    abs(bx - ld["launch_x"]) <= ld["launch_half_w"] + 18
+                    and abs(bottom_y - ld["launch_surface_y"]) < 26
+                    and speed < 45
+            ):
+                return
+
+            stopped_on_landing_deck = (
+                    speed < 15
+                    and abs(self.body.velocity.y) < 15
+                    and abs(bottom_y - ld["landing_surface_y"]) < 22
+                    and abs(bx - ld["landing_x"]) <= ld["landing_half_w"] + 18
+            )
+        else:
+            near_surface = bottom_y >= self.ground_y - 8
+            stopped_on_landing_deck = (
+                    speed < 15
+                    and abs(self.body.velocity.y) < 15
+                    and bottom_y < self.ground_y - 12
+            )
+            if near_surface or stopped_on_landing_deck:
+                if speed < 80 and angle < math.radians(20):
+                    self.landed = True
+                elif speed >= 80 or angle >= math.radians(35):
+                    self.crashed = True
+            return
+
+        near_surface = bottom_y >= self.ground_y - 8
+        if near_surface or stopped_on_landing_deck:
             if speed < 80 and angle < math.radians(20):
                 self.landed = True
             elif speed >= 80 or angle >= math.radians(35):
@@ -207,15 +259,20 @@ class Rocket:
         bx, by = self.body.position
         vx, vy = self.body.velocity
         speed = math.hypot(vx, vy)
-        alt = max(0.0, self.ground_y - by - self.height / 2)
+        bottom_y = by + (self.height / 2) * math.cos(self.body.angle)
+        alt = max(0.0, self.ground_y - bottom_y)
         angle_d = math.degrees(self.body.angle) % 360
+        omega_deg_s = math.degrees(float(self.body.angular_velocity))
         return {
             "x": bx,
+            "y": by,
+            "bottom_y": bottom_y,
             "altitude": alt,
             "vel_x": vx,
             "vel_y": vy,
             "speed": speed,
             "angle": angle_d,
+            "omega_deg_s": omega_deg_s,
             "fuel": self.fuel,
             "fuel_pct": self.fuel / FUEL_CAPACITY,
             "thrusting": self.thrusting,

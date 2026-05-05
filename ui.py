@@ -30,7 +30,7 @@ class SimControls:
         self.state = "stopped"
         self.rects = {}
         self.hovered = None
-        self._layout(screen_width, screen_height)
+        self.layout(screen_width, screen_height)
         self.icons = {
             "simulate": pygame.image.load("assets/icons/play.png").convert_alpha(),
             "simulate_white": pygame.image.load("assets/icons/play_white.png").convert_alpha(),
@@ -42,7 +42,7 @@ class SimControls:
         for k in self.icons:
             self.icons[k] = pygame.transform.smoothscale(self.icons[k], (14, 14))
 
-    def _layout(self, sw, sh):
+    def layout(self, sw, sh):
         self.sw = sw
         self.sh = sh
         self.panel_rect = pygame.Rect(0, sh - BOTTOM_H, sw, BOTTOM_H)
@@ -60,28 +60,17 @@ class SimControls:
 
     def update(self, dt, mouse_pos, screen_w, screen_h):
         if screen_w != self.sw or screen_h != self.sh:
-            self._layout(screen_w, screen_h)
+            self.layout(screen_w, screen_h)
         self.hovered = None
         for name, r in self.rects.items():
             if r.collidepoint(mouse_pos):
                 self.hovered = name
 
     def draw(self, screen):
-        sw, sh = self.sw, self.sh
-
-        shadow = pygame.Surface((sw, 6), pygame.SRCALPHA)
-        for i in range(6):
-            a = int(30 * (1 - i / 6))
-            pygame.draw.line(shadow, (0, 0, 0, a), (0, i), (sw, i))
-        screen.blit(shadow, (0, sh - BOTTOM_H - 6))
-
-        pygame.draw.rect(screen, WHITE, self.panel_rect)
-        pygame.draw.line(screen, CARD_BORDER, (0, sh - BOTTOM_H), (sw, sh - BOTTOM_H), 1)
-
         for name, rect in self.rects.items():
-            self._draw_button(screen, name, rect)
+            self.draw_button(screen, name, rect)
 
-    def _draw_button(self, screen, name, rect):
+    def draw_button(self, screen, name, rect):
         simulating = self.state == "simulating"
         hovered = self.hovered == name
 
@@ -157,15 +146,14 @@ class SimControls:
 
 class Toolbar:
     TOOLS = [
-        ("move", "Move", "WASD / drag"),
-        ("rotate", "Rotate", "Q / E"),
+        ("move", "Place Pad", "WASD / drag"),
         ("pan", "Pan", "drag"),
         ("zoom_in", "Zoom In", "scroll up"),
         ("zoom_out", "Zoom Out", "scroll down"),
     ]
 
     def __init__(self, top=TOOL_TOP):
-        self.active = "move"
+        self.active = "pan"
         self.simulating = False
         self.hovered = None
         self.rects = {}
@@ -177,8 +165,6 @@ class Toolbar:
         self.icons = {
             "move": pygame.image.load("assets/icons/move.png").convert_alpha(),
             "move_white": pygame.image.load("assets/icons/move_white.png").convert_alpha(),
-            "rotate": pygame.image.load("assets/icons/rotate.png").convert_alpha(),
-            "rotate_white": pygame.image.load("assets/icons/rotate_white.png").convert_alpha(),
             "pan": pygame.image.load("assets/icons/pan.png").convert_alpha(),
             "pan_white": pygame.image.load("assets/icons/pan_white.png").convert_alpha(),
             "zoom_in": pygame.image.load("assets/icons/zoom_in.png").convert_alpha(),
@@ -213,7 +199,7 @@ class Toolbar:
         for key, rect in self.rects.items():
             _, _, hint = next(t for t in self.TOOLS if t[0] == key)
 
-            locked = self.simulating and key in ("move", "rotate")
+            locked = self.simulating and key in ("move",)
             is_active = key == self.active
             hovered = self.hovered == key and not locked
 
@@ -261,7 +247,7 @@ class Toolbar:
     def handle_click(self, pos):
         for key, rect in self.rects.items():
             if rect.collidepoint(pos):
-                if self.simulating and key in ("move", "rotate"):
+                if self.simulating and key in ("move",):
                     return None
                 self.active = key
                 return key
