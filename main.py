@@ -65,11 +65,10 @@ def draw_ground(screen, ground_seg, pan_x, pan_y, zoom, W, H):
     if gy1 >= H:
         return
 
-    # --- Soil fill (three depth bands for a bit of richness) ---
     soil_bands = [
-        (0.00, (88,  62, 48)),   # top: warm dark soil
-        (0.25, (72,  50, 38)),   # mid
-        (0.55, (58,  40, 30)),   # deep
+        (0.00, (88, 62, 48)),
+        (0.25, (72, 50, 38)),
+        (0.55, (58, 40, 30)),
     ]
     total_h = H - gy1
     for i, (frac, col) in enumerate(soil_bands):
@@ -81,18 +80,15 @@ def draw_ground(screen, ground_seg, pan_x, pan_y, zoom, W, H):
         if y1 > y0:
             pygame.draw.rect(screen, col, pygame.Rect(0, y0, W, y1 - y0))
 
-    # --- Grass strip ---
     grass_h = max(3, int(9 * zoom))
     pygame.draw.rect(screen, (56, 120, 56), pygame.Rect(0, gy1 - grass_h, W, grass_h))
-    # Lighter top highlight on grass
     pygame.draw.rect(screen, (78, 155, 68), pygame.Rect(0, gy1 - grass_h, W, max(1, int(3 * zoom))))
 
-    # --- Grass tufts: small vertical strokes that pan with the world ---
-    tuft_spacing = 28   # world units between tufts
+    tuft_spacing = 28
     tuft_col_a = (48, 140, 52)
     tuft_col_b = (65, 160, 58)
     if zoom > 0.2:
-        world_left  = -pan_x / zoom
+        world_left = -pan_x / zoom
         world_right = (W - pan_x) / zoom
         first = int(world_left / tuft_spacing) * tuft_spacing
         x_w = first
@@ -109,11 +105,10 @@ def draw_ground(screen, ground_seg, pan_x, pan_y, zoom, W, H):
             x_w += tuft_spacing
             idx += 1
 
-    # --- Soil surface pebble dots ---
     pebble_spacing = 45
     pebble_col = (105, 78, 60)
     if zoom > 0.3:
-        world_left  = -pan_x / zoom
+        world_left = -pan_x / zoom
         world_right = (W - pan_x) / zoom
         first = int(world_left / pebble_spacing) * pebble_spacing
         x_w = first
@@ -121,7 +116,7 @@ def draw_ground(screen, ground_seg, pan_x, pan_y, zoom, W, H):
         while x_w < world_right:
             sx = int(x_w * zoom + pan_x)
             sy = gy1 + max(4, int((6 + (idx % 4) * 3) * zoom))
-            r  = max(1, int((1 + idx % 2) * zoom))
+            r = max(1, int((1 + idx % 2) * zoom))
             pygame.draw.circle(screen, pebble_col, (sx, sy), r)
             x_w += pebble_spacing
             idx += 1
