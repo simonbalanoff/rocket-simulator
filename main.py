@@ -1,14 +1,22 @@
+import argparse
+from datetime import datetime
+import json
+from pathlib import Path
+
 import pygame
 import pymunk
 
 from rocket import Rocket, ROCKET_H
-from autopilot import Autopilot
+from autopilot import Autopilot, ControllerSettings
+from flight_analysis import FlightRecorder
 from landing_platform import LandingPlatform, PLATFORM_W
 from ui import SimControls, Toolbar, TelemetryHUD, AutopilotHUD
 
 WIDTH = 1280
 HEIGHT = 800
 FPS = 60
+PHYSICS_DT = 1.0 / 120.0
+MAX_FRAME_DT = 0.1
 GROUND_Y = HEIGHT - 200
 
 PLACEMENT = "placement"
@@ -169,6 +177,7 @@ def start_sim(rocket, platform, autopilot, controls, toolbar, hud, ap_hud, launc
         launch_half_w=LAUNCH_PAD_W / 2,
     )
     rocket.handle_mouse_up()
+    platform.handle_mouse_up()
     controls.set_state("simulating")
     toolbar.set_simulating(True)
     hud.visible = True
@@ -195,7 +204,7 @@ def full_reset(rocket, platform, autopilot, controls, toolbar, hud, ap_hud):
     return 0.0, 0.0, 1.0
 
 
-def main():
+def main(record_dir=None, settings=None):
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("Rocket Landing Simulator")
@@ -214,11 +223,11 @@ def main():
     ground_seg.elasticity = 0.05
     space.add(ground_seg)
 
-    pad_top_y = GROUND_Y - 35 - LAUNCH_PAD_H
+    pad_top_y = GROUND_Y - 20 - LAUNCH_PAD_H
     pad_physics = pymunk.Segment(
         space.static_body,
-        (LAUNCH_PAD_X - LAUNCH_PAD_W // 2, pad_top_y),
-        (LAUNCH_PAD_X + LAUNCH_PAD_W // 2, pad_top_y),
+        (LAUNCH_PAD_X - LAUNCH_PAD_W // 2, pad_top_y + 2),
+        (LAUNCH_PAD_X + LAUNCH_PAD_W // 2, pad_top_y + 2),
         2
     )
     pad_physics.friction = 1.0
@@ -237,6 +246,7 @@ def main():
         landing_x=platform.get_center_x(),
         launch_surface_y=pad_top_y,
         launch_x=float(LAUNCH_PAD_X),
+        settings=settings,
     )
 
     controls = SimControls(WIDTH, HEIGHT)
@@ -256,9 +266,18 @@ def main():
     font_title = pygame.font.SysFont("Helvetica", 24, bold=True)
     font_hint = pygame.font.SysFont("Helvetica", 13)
 
+    accumulator = 0.0
+    flight_time = 0.0
+    recorder = None
+
+    def save_recording():
+        if recorder is not None and recorder.rows:
+            filename = datetime.now().strftime("flight-%Y%m%d-%H%M%S-%f.csv")
+            recorder.save(Path(record_dir) / filename)
+
     running = True
     while running:
-        dt = clock.tick(FPS) / 1000.0
+        dt = min(clock.tick(FPS) / 1000.0, MAX_FRAME_DT)
         W, H = screen.get_size()
         keys = pygame.key.get_pressed()
 
@@ -345,15 +364,37 @@ def main():
                 platform.handle_mouse_up()
 
         if state == PLACEMENT and toolbar.active == "move":
-            platform.handle_keys(keys)
+            platform.handle_keys(keys, speed=180.0 * dt)
+
+        if state != SIMULATING and recorder is not None:
+            save_recording()
+            recorder = None
 
         if state == SIMULATING:
-            tel = rocket.telemetry()
-            command = autopilot.update(tel, dt)
-            rocket.apply_autopilot(command, dt)
-            space.step(dt)
-            rocket.update(dt, simulating=True)
+            if record_dir is not None and recorder is None and not (rocket.landed or rocket.crashed):
+                recorder = FlightRecorder()
+                flight_time = 0.0
+            accumulator += dt
+            while accumulator >= PHYSICS_DT:
+                if not (rocket.landed or rocket.crashed):
+                    command = autopilot.update(rocket.telemetry(), PHYSICS_DT)
+                    if recorder is not None:
+                        recorder.record(flight_time, rocket.telemetry(), command, autopilot.targets,
+                                        platform.get_center_x(), platform.get_surface_y())
+                    rocket.apply_autopilot(command, PHYSICS_DT)
+                    space.step(PHYSICS_DT)
+                    rocket.update(PHYSICS_DT, simulating=True)
+                    flight_time += PHYSICS_DT
+                    if rocket.landed or rocket.crashed:
+                        final = autopilot.update(rocket.telemetry(), PHYSICS_DT)
+                        if recorder is not None:
+                            recorder.record(flight_time, rocket.telemetry(), final, {},
+                                            platform.get_center_x(), platform.get_surface_y())
+                            save_recording()
+                            recorder = None
+                accumulator -= PHYSICS_DT
         else:
+            accumulator = 0.0
             rocket.update(dt, simulating=False)
 
         draw_background(screen, pan_x, pan_y, zoom, W, H)
@@ -384,10 +425,16 @@ def main():
 
         pygame.display.flip()
 
+    save_recording()
     pygame.quit()
 
 
 BOTTOM_H = 80
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Interactive rocket landing simulator")
+    parser.add_argument('--record-dir', type=Path, help='save each flight as CSV in this directory')
+    parser.add_argument('--settings', type=Path, help='controller settings JSON from tune_controller.py')
+    args = parser.parse_args()
+    settings = ControllerSettings(**json.loads(args.settings.read_text())) if args.settings else None
+    main(record_dir=args.record_dir, settings=settings)

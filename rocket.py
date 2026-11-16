@@ -113,6 +113,7 @@ class Rocket:
         self.landed = False
         self.crashed = False
         self._landing_detection = None
+        self._previous_velocity = (0.0, 0.0)
 
         self.body = None
         self.shape = None
@@ -157,6 +158,7 @@ class Rocket:
             self.placement_y = self.original_y
             self.placement_angle = 0.0
         self.thrusting = False
+        self.fuel = FUEL_CAPACITY
         self.particles.clear()
         self.landed = False
         self.crashed = False
@@ -183,18 +185,22 @@ class Rocket:
         }
 
     def apply_autopilot(self, command, dt):
-        if command.thrust > 0 and self.fuel > 0:
+        self.thrusting = False
+        self._previous_velocity = tuple(self.body.velocity)
+        if self.landed or self.crashed or dt <= 0:
+            return
+        throttle = max(0.0, min(1.0, command.thrust))
+        throttle = min(throttle, self.fuel / (FUEL_BURN * dt))
+        if throttle > 0:
             self.thrusting = True
-            self.fuel = max(0.0, self.fuel - FUEL_BURN * dt * command.thrust)
+            self.fuel = max(0.0, self.fuel - FUEL_BURN * dt * throttle)
             dx, dy = local_y(self.body.angle)
-            f = THRUST_FORCE * command.thrust
+            f = THRUST_FORCE * throttle
             self.body.apply_force_at_world_point((f * dx, f * dy), self.body.position)
             self.spawn_particles()
-        if command.torque != 0:
-            self.body.torque += command.torque
+        self.body.torque += command.torque
 
     def update(self, dt, simulating):
-        self.thrusting = False
         if simulating and not self.landed and not self.crashed:
             self.check_landing()
         self.particles = [p for p in self.particles if p.update(dt)]
@@ -212,53 +218,36 @@ class Rocket:
             self.particles.append(Particle(nx, ny, vx, vy))
 
     def check_landing(self):
-        bx, by = self.body.position
-        speed = self.body.velocity.length
-        angle = self.body.angle % (2 * math.pi)
-        if angle > math.pi:
-            angle = 2 * math.pi - angle
-        bottom_y = by + (self.height / 2) * math.cos(self.body.angle)
-
-        ld = self._landing_detection
-        if ld is not None:
-            if (
-                    abs(bx - ld["launch_x"]) <= ld["launch_half_w"] + 18
-                    and abs(bottom_y - ld["launch_surface_y"]) < 26
-                    and speed < 45
-            ):
-                return
-
-            on_landing_deck = (
-                    abs(bottom_y - ld["landing_surface_y"]) < 50
-                    and abs(bx - ld["landing_x"]) <= ld["landing_half_w"] + 25
-            )
-            stopped_on_landing_deck = (
-                    on_landing_deck
-                    and speed < 30
-                    and abs(self.body.velocity.y) < 25
-            )
-        else:
-            near_surface = bottom_y >= self.ground_y - 8
-            stopped_on_landing_deck = (
-                    speed < 30
-                    and abs(self.body.velocity.y) < 25
-                    and bottom_y < self.ground_y - 12
-            )
-            if near_surface or stopped_on_landing_deck:
-                if speed < 80 and angle < math.radians(20):
-                    self.landed = True
-                elif speed >= 80 or angle >= math.radians(35):
-                    self.crashed = True
+        # Contact is required: proximity alone must never complete a mission.
+        contacts = []
+        self.body.each_arbiter(lambda arbiter: contacts.append(arbiter))
+        if not contacts:
             return
-
-        near_surface = bottom_y >= self.ground_y - 8
-        if near_surface or stopped_on_landing_deck:
-            if speed < 80 and angle < math.radians(20):
-                self.landed = True
-                self.body.velocity = (0, 0)
-                self.body.angular_velocity = 0
-            elif speed >= 80 or angle >= math.radians(35):
-                self.crashed = True
+        bx, by = self.body.position
+        angle = abs((self.body.angle + math.pi) % math.tau - math.pi)
+        bottom_y = by + (self.height / 2) * math.cos(self.body.angle)
+        speed = max(self.body.velocity.length, math.hypot(*self._previous_velocity))
+        ld = self._landing_detection
+        if ld is None:
+            self.crashed = True
+            return
+        # Ignore the launch support while the engine lifts off.
+        if (abs(bx - ld["launch_x"]) <= ld["launch_half_w"]
+                and abs(bottom_y - ld["launch_surface_y"]) < 6
+                and self.thrusting):
+            return
+        on_target = (
+            abs(bx - ld["landing_x"]) + self.width / 2 <= ld["landing_half_w"]
+            and abs(bottom_y - ld["landing_surface_y"]) < 6
+        )
+        if on_target and speed < 30 and angle < math.radians(10):
+            self.landed = True
+            self.thrusting = False
+            self.body.velocity = (0, 0)
+            self.body.angular_velocity = 0
+        else:
+            self.crashed = True
+            self.thrusting = False
 
     def telemetry(self):
         bx, by = self.body.position

@@ -1,4 +1,7 @@
 import pygame
+from pathlib import Path
+
+ICON_DIR = Path(__file__).resolve().parent / "assets" / "icons"
 
 from theme import (
     F, draw_rect, shadow_rect,
@@ -32,12 +35,12 @@ class SimControls:
         self.hovered = None
         self.layout(screen_width, screen_height)
         self.icons = {
-            "simulate": pygame.image.load("assets/icons/play.png").convert_alpha(),
-            "simulate_white": pygame.image.load("assets/icons/play_white.png").convert_alpha(),
-            "stop": pygame.image.load("assets/icons/stop.png").convert_alpha(),
-            "stop_white": pygame.image.load("assets/icons/stop_white.png").convert_alpha(),
-            "reset": pygame.image.load("assets/icons/reset.png").convert_alpha(),
-            "reset_white": pygame.image.load("assets/icons/reset_white.png").convert_alpha(),
+            "simulate": pygame.image.load(str(ICON_DIR / "play.png")).convert_alpha(),
+            "simulate_white": pygame.image.load(str(ICON_DIR / "play_white.png")).convert_alpha(),
+            "stop": pygame.image.load(str(ICON_DIR / "stop.png")).convert_alpha(),
+            "stop_white": pygame.image.load(str(ICON_DIR / "stop_white.png")).convert_alpha(),
+            "reset": pygame.image.load(str(ICON_DIR / "reset.png")).convert_alpha(),
+            "reset_white": pygame.image.load(str(ICON_DIR / "reset_white.png")).convert_alpha(),
         }
         for k in self.icons:
             self.icons[k] = pygame.transform.smoothscale(self.icons[k], (14, 14))
@@ -153,7 +156,7 @@ class Toolbar:
     ]
 
     def __init__(self, top=TOOL_TOP):
-        self.active = "pan"
+        self.active = "move"
         self.simulating = False
         self.hovered = None
         self.rects = {}
@@ -163,14 +166,14 @@ class Toolbar:
             self.rects[key] = pygame.Rect(TOOL_X, y, TOOL_W, TOOL_H)
 
         self.icons = {
-            "move": pygame.image.load("assets/icons/move.png").convert_alpha(),
-            "move_white": pygame.image.load("assets/icons/move_white.png").convert_alpha(),
-            "pan": pygame.image.load("assets/icons/pan.png").convert_alpha(),
-            "pan_white": pygame.image.load("assets/icons/pan_white.png").convert_alpha(),
-            "zoom_in": pygame.image.load("assets/icons/zoom_in.png").convert_alpha(),
-            "zoom_in_white": pygame.image.load("assets/icons/zoom_in_white.png").convert_alpha(),
-            "zoom_out": pygame.image.load("assets/icons/zoom_out.png").convert_alpha(),
-            "zoom_out_white": pygame.image.load("assets/icons/zoom_out_white.png").convert_alpha(),
+            "move": pygame.image.load(str(ICON_DIR / "move.png")).convert_alpha(),
+            "move_white": pygame.image.load(str(ICON_DIR / "move_white.png")).convert_alpha(),
+            "pan": pygame.image.load(str(ICON_DIR / "pan.png")).convert_alpha(),
+            "pan_white": pygame.image.load(str(ICON_DIR / "pan_white.png")).convert_alpha(),
+            "zoom_in": pygame.image.load(str(ICON_DIR / "zoom_in.png")).convert_alpha(),
+            "zoom_in_white": pygame.image.load(str(ICON_DIR / "zoom_in_white.png")).convert_alpha(),
+            "zoom_out": pygame.image.load(str(ICON_DIR / "zoom_out.png")).convert_alpha(),
+            "zoom_out_white": pygame.image.load(str(ICON_DIR / "zoom_out_white.png")).convert_alpha(),
         }
 
         for k in self.icons:
@@ -249,7 +252,8 @@ class Toolbar:
             if rect.collidepoint(pos):
                 if self.simulating and key in ("move",):
                     return None
-                self.active = key
+                if key in ("move", "pan"):
+                    self.active = key
                 return key
         return None
 
@@ -259,10 +263,10 @@ class Toolbar:
 
 class TelemetryHUD:
     ROWS = [
-        ("ALT", "altitude", "m", False),
-        ("VX", "vel_x", "m/s", True),
-        ("VY", "vel_y", "m/s", True),
-        ("SPD", "speed", "m/s", False),
+        ("ALT", "altitude", "px", False),
+        ("VX", "vel_x", "px/s", True),
+        ("VY", "vel_y", "px/s", True),
+        ("SPD", "speed", "px/s", False),
         ("ANG", "angle", "°", False),
     ]
     W = 175
@@ -322,7 +326,7 @@ class TelemetryHUD:
         fp = telem.get("fuel_pct", 1.0)
         fc = FUEL_COL if fp > 0.2 else WARN_COL
         F.render_to(screen, (px + pad, y), "FUEL", 9, TEXT_MID, bold=True)
-        fv = f"{telem.get('fuel', 0):.0f} kg"
+        fv = f"{telem.get('fuel', 0):.0f} u"
         fw, _ = F.size(fv, 11, bold=True)
         F.render_to(screen, (px + self.W - pad - fw, y), fv, 11, fc, bold=True)
         y += 16

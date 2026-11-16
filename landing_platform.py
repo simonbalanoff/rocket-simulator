@@ -66,15 +66,13 @@ class LandingPlatform:
 
     def build_seg(self):
         if self.seg is not None:
-            try:
+            if self.seg in self.space.shapes:
                 self.space.remove(self.seg)
-            except Exception:
-                pass
         half = self.width / 2
         self.seg = pymunk.Segment(
             self.space.static_body,
-            (self.x - half, self.y - self.height - 10),
-            (self.x + half, self.y - self.height - 10),
+            (self.x - half, self.get_surface_y() + 4),
+            (self.x + half, self.get_surface_y() + 4),
             4,
         )
         self.seg.friction = 1.0
@@ -86,10 +84,8 @@ class LandingPlatform:
 
     def remove_seg(self):
         if self.seg is not None:
-            try:
+            if self.seg in self.space.shapes:
                 self.space.remove(self.seg)
-            except Exception:
-                pass
             self.seg = None
 
     def reset(self, to_original=False):
@@ -99,10 +95,10 @@ class LandingPlatform:
         self.build_seg()
 
     def get_center_x(self):
-        return self.x + self.width / 2
+        return self.x
 
     def get_surface_y(self):
-        return self.y
+        return self.y - self.height
 
     def x_tip(self, pan_x, pan_y, zoom):
         sx, sy = world_to_screen(self.x, self.y, pan_x, pan_y, zoom)
@@ -174,7 +170,7 @@ class LandingPlatform:
         cx, cy = world_to_screen(self.x, self.y, pan_x, pan_y, zoom)
         pw = self.width * zoom
         ph = PLATFORM_H * zoom
-        leg_h = self.ground_y
+        leg_h = max(0.0, (self.ground_y - self.y) * zoom)
         leg_w = max(4, 10 * zoom)
 
         leg_offsets = [-pw * 0.35, pw * 0.35]
@@ -195,7 +191,7 @@ class LandingPlatform:
             font = pygame.font.SysFont("Helvetica", font_size)
             lbl = font.render("LANDING PAD", True, (160, 200, 240))
             if lbl.get_width() > 0:
-                screen.blit(lbl, (int(cx - lbl.get_width() / 2), int(cy + leg_h + 20)))
+                screen.blit(lbl, (int(cx - lbl.get_width() / 2), int(cy + 8 * zoom)))
         except pygame.error:
             pass
 

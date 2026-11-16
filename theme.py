@@ -3,9 +3,6 @@ import pygame.freetype
 
 pygame.freetype.init()
 
-SANS_R = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-SANS_B = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
-
 BG = (232, 235, 242)
 BG_GRID = (215, 219, 230)
 BG_AXIS = (195, 202, 218)
@@ -64,8 +61,7 @@ class Fonts:
     def get(self, size, bold=False):
         key = (size, bold)
         if key not in self._cache:
-            path = SANS_B if bold else SANS_R
-            self._cache[key] = pygame.freetype.SysFont(path, size)
+            self._cache[key] = pygame.freetype.SysFont("Helvetica,Arial,Liberation Sans", size, bold=bold)
         return self._cache[key]
 
     def render(self, text, size, color, bold=False):
