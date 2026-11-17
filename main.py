@@ -1,6 +1,8 @@
 import argparse
+from collections import deque
 from datetime import datetime
 import json
+import math
 from pathlib import Path
 
 import pygame
@@ -8,9 +10,10 @@ import pymunk
 
 from rocket import Rocket, ROCKET_H
 from autopilot import Autopilot, ControllerSettings
-from flight_analysis import FlightRecorder
+from recording import FlightRecorder
 from landing_platform import LandingPlatform, PLATFORM_W
-from ui import SimControls, Toolbar, TelemetryHUD, AutopilotHUD
+from ui import (SimControls, Toolbar, TelemetryHUD, AutopilotHUD,
+                draw_chrome, viewport_rect, label, HEADER_H, BOTTOM_H)
 
 WIDTH = 1280
 HEIGHT = 800
@@ -44,12 +47,25 @@ def zoom_at(mouse_pos, factor, pan_x, pan_y, zoom):
     return new_zoom, mx - scale * (mx - pan_x), my - scale * (my - pan_y)
 
 
+def fit_mission(width, height, platform):
+    """Fit launch, target, and expected ascent inside the unobstructed canvas."""
+    view = viewport_rect(width, height)
+    left = min(LAUNCH_PAD_X - 100, platform.x - PLATFORM_W / 2) - 65
+    right = max(LAUNCH_PAD_X + 100, platform.x + PLATFORM_W / 2) + 65
+    top = min(0, platform.get_surface_y() - 580)
+    bottom = GROUND_Y + 65
+    zoom = max(.1, min(1.5, (view.width - 140) / (right - left),
+                              (view.height - 120) / (bottom - top)))
+    return (view.centerx + 25 - (left + right) / 2 * zoom,
+            view.centery - 10 - (top + bottom) / 2 * zoom, zoom)
+
+
 def draw_background(screen, pan_x, pan_y, zoom, W, H):
-    screen.fill((228, 232, 242))
+    screen.fill((11, 18, 29))
     grid_size = 60 * zoom
     if grid_size < 4:
         return
-    grid_col = (210, 216, 230)
+    grid_col = (23, 35, 51)
     ox = pan_x % grid_size
     oy = pan_y % grid_size
     x = -grid_size
@@ -60,74 +76,25 @@ def draw_background(screen, pan_x, pan_y, zoom, W, H):
     while y < H + grid_size:
         pygame.draw.line(screen, grid_col, (0, int(y + oy)), (W, int(y + oy)))
         y += grid_size
-    axis_col = (188, 198, 218)
+    axis_col = (35, 51, 70)
     pygame.draw.line(screen, axis_col, (int(pan_x), 0), (int(pan_x), H))
     pygame.draw.line(screen, axis_col, (0, int(pan_y)), (W, int(pan_y)))
 
 
 def draw_ground(screen, ground_seg, pan_x, pan_y, zoom, W, H):
-    import math
-    body = ground_seg.body
-    _, gy1 = world_to_screen(0, ground_seg.a.y + body.position.y, pan_x, pan_y, zoom)
-    gy1 = int(gy1)
-    if gy1 >= H:
+    _, ground = world_to_screen(0, GROUND_Y, pan_x, pan_y, zoom)
+    if ground >= H:
         return
-
-    soil_bands = [
-        (0.00, (88, 62, 48)),
-        (0.25, (72, 50, 38)),
-        (0.55, (58, 40, 30)),
-    ]
-    total_h = H - gy1
-    for i, (frac, col) in enumerate(soil_bands):
-        y0 = gy1 + int(frac * total_h)
-        if i + 1 < len(soil_bands):
-            y1 = gy1 + int(soil_bands[i + 1][0] * total_h)
-        else:
-            y1 = H
-        if y1 > y0:
-            pygame.draw.rect(screen, col, pygame.Rect(0, y0, W, y1 - y0))
-
-    grass_h = max(3, int(9 * zoom))
-    pygame.draw.rect(screen, (56, 120, 56), pygame.Rect(0, gy1 - grass_h, W, grass_h))
-    pygame.draw.rect(screen, (78, 155, 68), pygame.Rect(0, gy1 - grass_h, W, max(1, int(3 * zoom))))
-
-    tuft_spacing = 28
-    tuft_col_a = (48, 140, 52)
-    tuft_col_b = (65, 160, 58)
-    if zoom > 0.2:
-        world_left = -pan_x / zoom
-        world_right = (W - pan_x) / zoom
-        first = int(world_left / tuft_spacing) * tuft_spacing
-        x_w = first
-        idx = 0
-        while x_w < world_right:
-            sx = int(x_w * zoom + pan_x)
-            col = tuft_col_a if idx % 2 == 0 else tuft_col_b
-            h_tuft = max(2, int((4 + (idx % 3) * 2) * zoom))
-            w_tuft = max(1, int(2 * zoom))
-            pygame.draw.rect(screen, col,
-                             pygame.Rect(sx - w_tuft // 2,
-                                         gy1 - grass_h - h_tuft,
-                                         w_tuft, h_tuft))
-            x_w += tuft_spacing
-            idx += 1
-
-    pebble_spacing = 45
-    pebble_col = (105, 78, 60)
-    if zoom > 0.3:
-        world_left = -pan_x / zoom
-        world_right = (W - pan_x) / zoom
-        first = int(world_left / pebble_spacing) * pebble_spacing
-        x_w = first
-        idx = 0
-        while x_w < world_right:
-            sx = int(x_w * zoom + pan_x)
-            sy = gy1 + max(4, int((6 + (idx % 4) * 3) * zoom))
-            r = max(1, int((1 + idx % 2) * zoom))
-            pygame.draw.circle(screen, pebble_col, (sx, sy), r)
-            x_w += pebble_spacing
-            idx += 1
+    top = max(0, int(ground))
+    pygame.draw.rect(screen, (18, 28, 40), (0, top, W, H - top))
+    pygame.draw.line(screen, (63, 84, 98), (0, int(ground)), (W, int(ground)), 2)
+    # Sparse survey marks give scale without distracting from the vehicle.
+    spacing = 60 * zoom
+    x = pan_x % spacing
+    while x < W:
+        pygame.draw.line(screen, (40, 57, 72), (int(x), int(ground)),
+                         (int(x - 16 * zoom), int(ground + 20 * zoom)), 1)
+        x += spacing
 
 
 def draw_launch_pad(screen, pad_x, pad_y, pan_x, pan_y, zoom):
@@ -180,6 +147,7 @@ def start_sim(rocket, platform, autopilot, controls, toolbar, hud, ap_hud, launc
     platform.handle_mouse_up()
     controls.set_state("simulating")
     toolbar.set_simulating(True)
+    hud.history.clear()
     hud.visible = True
     ap_hud.visible = True
 
@@ -256,15 +224,14 @@ def main(record_dir=None, settings=None):
     controls.set_state("stopped")
 
     state = PLACEMENT
-    zoom = 1.0
-    pan_x = 0.0
-    pan_y = 0.0
+    pan_x, pan_y, zoom = fit_mission(WIDTH, HEIGHT, platform)
+    paused = False
+    trail = deque(maxlen=2400)
+    last_size = (WIDTH, HEIGHT)
+    last_state = PLACEMENT
     panning = False
     pan_start = (0, 0)
     pan_origin = (0.0, 0.0)
-
-    font_title = pygame.font.SysFont("Helvetica", 24, bold=True)
-    font_hint = pygame.font.SysFont("Helvetica", 13)
 
     accumulator = 0.0
     flight_time = 0.0
@@ -279,6 +246,11 @@ def main(record_dir=None, settings=None):
     while running:
         dt = min(clock.tick(FPS) / 1000.0, MAX_FRAME_DT)
         W, H = screen.get_size()
+        if (W, H) != last_size:
+            W, H = max(800, W), max(680, H)
+            screen = pygame.display.set_mode((W, H), pygame.RESIZABLE)
+            pan_x, pan_y, zoom = fit_mission(W, H, platform)
+            last_size = (W, H)
         keys = pygame.key.get_pressed()
 
         mouse_pos = pygame.mouse.get_pos()
@@ -293,7 +265,27 @@ def main(record_dir=None, settings=None):
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    running = False
+                    if toolbar.help:
+                        toolbar.help = False
+                    else:
+                        running = False
+                elif event.key == pygame.K_SPACE and state == SIMULATING and not (rocket.landed or rocket.crashed):
+                    paused = not paused
+                elif event.key == pygame.K_f:
+                    pan_x, pan_y, zoom = fit_mission(W, H, platform)
+                    toolbar.follow = False
+                elif event.key == pygame.K_c:
+                    toolbar.follow = not toolbar.follow
+                elif event.key == pygame.K_v and state == PLACEMENT:
+                    toolbar.active = "move"
+                elif event.key == pygame.K_h:
+                    toolbar.active = "pan"
+                elif event.key in (pygame.K_SLASH, pygame.K_QUESTION):
+                    toolbar.help = not toolbar.help
+                elif event.key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_MINUS):
+                    view = viewport_rect(W, H)
+                    zoom, pan_x, pan_y = zoom_at(view.center, 1 / 1.15 if event.key == pygame.K_MINUS else 1.15, pan_x, pan_y, zoom)
+                    toolbar.follow = False
                 elif event.key == pygame.K_r:
                     stop_sim(rocket, autopilot, controls, toolbar, hud, ap_hud)
                     state = PLACEMENT
@@ -304,19 +296,30 @@ def main(record_dir=None, settings=None):
                     )
                     state = SIMULATING
 
+            if event.type == pygame.MOUSEWHEEL and viewport_rect(W, H).collidepoint(mouse_pos) and not toolbar.help:
+                zoom, pan_x, pan_y = zoom_at(mouse_pos, 1.1 ** event.y, pan_x, pan_y, zoom)
+
             if event.type == pygame.MOUSEBUTTONDOWN:
                 pos = event.pos
-                if event.button == 4:
+                if toolbar.help:
+                    toolbar.help = False
+                    continue
+                over_scene = viewport_rect(W, H).collidepoint(pos) and not toolbar.hit(pos)
+                if event.button == 4 and over_scene:
                     zoom, pan_x, pan_y = zoom_at(pos, 1.1, pan_x, pan_y, zoom)
-                elif event.button == 5:
+                elif event.button == 5 and over_scene:
                     zoom, pan_x, pan_y = zoom_at(pos, 1 / 1.1, pan_x, pan_y, zoom)
-                elif event.button == 2:
+                elif event.button == 2 and over_scene:
                     panning = True
+                    toolbar.follow = False
                     pan_start = pos
                     pan_origin = (pan_x, pan_y)
                 elif event.button == 1:
                     sim_click = controls.handle_click(pos)
-                    if sim_click == "simulate" and state == PLACEMENT:
+                    if sim_click == "pause":
+                        if not (rocket.landed or rocket.crashed):
+                            paused = not paused
+                    elif sim_click == "simulate" and state == PLACEMENT:
                         start_sim(
                             rocket, platform, autopilot, controls,
                             toolbar, hud, ap_hud, pad_top_y, LAUNCH_PAD_X,
@@ -330,17 +333,29 @@ def main(record_dir=None, settings=None):
                             rocket, platform, autopilot,
                             controls, toolbar, hud, ap_hud)
                         state = PLACEMENT
+                        pan_x, pan_y, zoom = fit_mission(W, H, platform)
+                        toolbar.follow = False
+                    elif controls.panel_rect.collidepoint(pos):
+                        continue
                     else:
                         tb = toolbar.handle_click(pos)
                         if tb == "zoom_in":
                             zoom, pan_x, pan_y = zoom_at(
-                                (W // 2, H // 2), 1.15, pan_x, pan_y, zoom)
+                                viewport_rect(W, H).center, 1.15, pan_x, pan_y, zoom)
                         elif tb == "zoom_out":
                             zoom, pan_x, pan_y = zoom_at(
-                                (W // 2, H // 2), 1 / 1.15, pan_x, pan_y, zoom)
-                        elif not tb:
+                                viewport_rect(W, H).center, 1 / 1.15, pan_x, pan_y, zoom)
+                        elif tb == "fit":
+                            pan_x, pan_y, zoom = fit_mission(W, H, platform)
+                            toolbar.follow = False
+                        elif tb == "follow":
+                            toolbar.follow = not toolbar.follow
+                        elif tb == "help":
+                            toolbar.help = not toolbar.help
+                        elif not tb and over_scene:
                             if toolbar.active == "pan":
                                 panning = True
+                                toolbar.follow = False
                                 pan_start = pos
                                 pan_origin = (pan_x, pan_y)
                             elif toolbar.active == "move" and state == PLACEMENT:
@@ -352,10 +367,7 @@ def main(record_dir=None, settings=None):
                     dy = event.pos[1] - pan_start[1]
                     pan_x = pan_origin[0] + dx
 
-                    target_y = pan_origin[1] + dy
-                    min_pan_y = -GROUND_Y * zoom + 400
-                    max_pan_y = H * 0.7
-                    pan_y = max(min_pan_y, min(max_pan_y, target_y))
+                    pan_y = pan_origin[1] + dy
                 elif toolbar.active == "move" and state == PLACEMENT:
                     platform.handle_mouse_move(event.pos, pan_x, pan_y, zoom)
 
@@ -363,7 +375,14 @@ def main(record_dir=None, settings=None):
                 panning = False
                 platform.handle_mouse_up()
 
-        if state == PLACEMENT and toolbar.active == "move":
+        if state != last_state:
+            panning = False
+            paused = False
+            flight_time = 0.0
+            trail.clear()
+            last_state = state
+
+        if state == PLACEMENT and toolbar.active == "move" and not toolbar.help:
             platform.handle_keys(keys, speed=180.0 * dt)
 
         if state != SIMULATING and recorder is not None:
@@ -374,7 +393,7 @@ def main(record_dir=None, settings=None):
             if record_dir is not None and recorder is None and not (rocket.landed or rocket.crashed):
                 recorder = FlightRecorder()
                 flight_time = 0.0
-            accumulator += dt
+            accumulator += 0.0 if paused else dt
             while accumulator >= PHYSICS_DT:
                 if not (rocket.landed or rocket.crashed):
                     command = autopilot.update(rocket.telemetry(), PHYSICS_DT)
@@ -385,6 +404,8 @@ def main(record_dir=None, settings=None):
                     space.step(PHYSICS_DT)
                     rocket.update(PHYSICS_DT, simulating=True)
                     flight_time += PHYSICS_DT
+                    if len(trail) == 0 or flight_time - trail[-1][0] >= 1 / 30:
+                        trail.append((flight_time, tuple(rocket.body.position)))
                     if rocket.landed or rocket.crashed:
                         final = autopilot.update(rocket.telemetry(), PHYSICS_DT)
                         if recorder is not None:
@@ -393,10 +414,20 @@ def main(record_dir=None, settings=None):
                             save_recording()
                             recorder = None
                 accumulator -= PHYSICS_DT
+            if rocket.landed or rocket.crashed:
+                rocket.update(dt, simulating=False)
         else:
             accumulator = 0.0
             rocket.update(dt, simulating=False)
 
+        view = viewport_rect(W, H)
+        if toolbar.follow:
+            target_x = view.centerx - rocket.body.position.x * zoom
+            target_y = view.centery - rocket.body.position.y * zoom
+            blend = 1 - math.exp(-6 * dt)
+            pan_x += (target_x - pan_x) * blend
+            pan_y += (target_y - pan_y) * blend
+        screen.set_clip(view)
         draw_background(screen, pan_x, pan_y, zoom, W, H)
         platform.draw(screen, pan_x, pan_y, zoom)
         draw_ground(screen, ground_seg, pan_x, pan_y, zoom, W, H)
@@ -405,31 +436,44 @@ def main(record_dir=None, settings=None):
         if state == PLACEMENT and toolbar.active == "move":
             platform.draw_gizmo(screen, pan_x, pan_y, zoom)
 
+        if len(trail) > 1:
+            points = [world_to_screen(*position, pan_x, pan_y, zoom) for _, position in trail]
+            pygame.draw.aalines(screen, (54, 121, 121), False, points)
         rocket.draw(screen, pan_x, pan_y, zoom)
+        # Target centerline and a consistent world-space scale reference.
+        tx, ty = world_to_screen(platform.x, platform.get_surface_y(), pan_x, pan_y, zoom)
+        pygame.draw.line(screen, (88, 221, 183), (int(tx) - 9, int(ty) - 8), (int(tx) + 9, int(ty) - 8), 2)
+        pygame.draw.line(screen, (88, 221, 183), (int(tx), int(ty) - 17), (int(tx), int(ty) - 1), 1)
+        sx, sy = world_to_screen(*rocket.body.position, pan_x, pan_y, zoom)
+        if not view.inflate(-40, -40).collidepoint(sx, sy):
+            marker_x = max(view.left + 88, min(view.right - 88, sx))
+            marker_y = max(view.top + 60, min(view.bottom - 80, sy))
+            pygame.draw.circle(screen, (88, 221, 183), (int(marker_x), int(marker_y)), 9, 2)
+            label(screen, (marker_x - 36, marker_y + 18), 'ROCKET / C', 10, (88, 221, 183), True)
+        screen.set_clip(None)
+        draw_chrome(screen, state == SIMULATING, rocket.telemetry(), flight_time,
+                    platform, toolbar, zoom, paused, record_dir is not None)
+        controls.finished = rocket.landed or rocket.crashed
+        controls.paused = paused
         controls.draw(screen)
         toolbar.draw(screen)
+        if not toolbar.help:
+            over_button = (any(rect.collidepoint(mouse_pos) for rect in controls.rects.values())
+                           or controls.pause_rect.collidepoint(mouse_pos) or toolbar.hit(mouse_pos))
+            try:
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND if over_button else
+                                        pygame.SYSTEM_CURSOR_SIZEALL if panning else pygame.SYSTEM_CURSOR_ARROW)
+            except pygame.error:
+                pass  # Some headless/window-system drivers do not support cursors.
 
-        if state == SIMULATING:
-            tel = rocket.telemetry()
-            hud.draw(screen, tel, W, H)
-            ap_hud.draw(screen, autopilot.status_lines(), W, H)
-
-        title = font_title.render("ROCKET LANDING SIMULATOR", True, (75, 95, 138))
-        screen.blit(title, (14, 14))
-
-        if state == PLACEMENT:
-            hint_text = "Move landing pad: drag gizmo or WASD  |  Enter / Simulate to launch"
-            hint = font_hint.render(hint_text, True, (110, 130, 170))
-            hint_y = H - BOTTOM_H - 28 if (H - BOTTOM_H - 28) > 50 else 50
-            screen.blit(hint, (W // 2 - hint.get_width() // 2, hint_y))
+        hud.draw(screen, rocket.telemetry(), W, H)
+        ap_hud.draw(screen, autopilot.status_lines(), W, H)
 
         pygame.display.flip()
 
     save_recording()
     pygame.quit()
 
-
-BOTTOM_H = 80
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Interactive rocket landing simulator")

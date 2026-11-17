@@ -1,9 +1,7 @@
 import pygame
-import pymunk
+from physics import PlatformPhysics, PLATFORM_W, PLATFORM_H
 import math
 
-PLATFORM_W = 300
-PLATFORM_H = 16
 PLATFORM_LEG_H = 128
 
 AXIS_LEN = 70
@@ -44,61 +42,15 @@ def draw_arrow(surf, start, end, color, label=None, width=2, head=11):
         surf.blit(s, (ex + int(px2 / mag * 16) - 5, ey + int(py2 / mag * 16) - 7))
 
 
-class LandingPlatform:
+class LandingPlatform(PlatformPhysics):
+    """Pygame pad rendering and placement interaction."""
+
     def __init__(self, space, x, y, ground_y):
-        self.space = space
-        self.ground_y = ground_y
-        self.width = PLATFORM_W
-        self.height = PLATFORM_H
-
-        self.x = float(x)
-        self.y = float(y)
-
-        self.original_x = float(x)
-        self.original_y = float(y)
-
         self.drag_mode = None
         self.drag_origin = None
         self.drag_start = None
 
-        self.seg = None
-        self.build_seg()
-
-    def build_seg(self):
-        if self.seg is not None:
-            if self.seg in self.space.shapes:
-                self.space.remove(self.seg)
-        half = self.width / 2
-        self.seg = pymunk.Segment(
-            self.space.static_body,
-            (self.x - half, self.get_surface_y() + 4),
-            (self.x + half, self.get_surface_y() + 4),
-            4,
-        )
-        self.seg.friction = 1.0
-        self.seg.elasticity = 0.02
-        self.space.add(self.seg)
-
-    def rebuild_seg(self):
-        self.build_seg()
-
-    def remove_seg(self):
-        if self.seg is not None:
-            if self.seg in self.space.shapes:
-                self.space.remove(self.seg)
-            self.seg = None
-
-    def reset(self, to_original=False):
-        if to_original:
-            self.x = self.original_x
-            self.y = self.original_y
-        self.build_seg()
-
-    def get_center_x(self):
-        return self.x
-
-    def get_surface_y(self):
-        return self.y - self.height
+        super().__init__(space, x, y, ground_y)
 
     def x_tip(self, pan_x, pan_y, zoom):
         sx, sy = world_to_screen(self.x, self.y, pan_x, pan_y, zoom)
@@ -113,14 +65,15 @@ class LandingPlatform:
         cx, cy = world_to_screen(self.x, self.y, pan_x, pan_y, zoom)
         xt = self.x_tip(pan_x, pan_y, zoom)
         yt = self.y_tip(pan_x, pan_y, zoom)
+        if math.hypot(sx - cx, sy - cy) < 12:
+            return "xy"
         if seg_dist(sx, sy, cx, cy, *xt) < AXIS_HIT_R:
             return "x"
         if seg_dist(sx, sy, cx, cy, *yt) < AXIS_HIT_R:
             return "y"
         bw = self.width * zoom / 2
-        bh = (PLATFORM_H + PLATFORM_LEG_H) * zoom
-        if abs(sx - cx) < bw and abs(sy - cy) < bh:
-            return "x"
+        if abs(sx - cx) < bw and cy - PLATFORM_H * zoom - 8 <= sy <= cy + 10:
+            return "xy"
         return None
 
     def handle_mouse_down(self, screen_pos, pan_x, pan_y, zoom):
@@ -138,9 +91,9 @@ class LandingPlatform:
         dx_s = sx - ox
         dy_s = sy - oy
         bx, by = self.drag_start
-        if self.drag_mode == "x":
+        if self.drag_mode in ("x", "xy"):
             self.x = bx + dx_s / zoom
-        elif self.drag_mode == "y":
+        if self.drag_mode in ("y", "xy"):
             self.y = by + dy_s / zoom
         self.build_seg()
 

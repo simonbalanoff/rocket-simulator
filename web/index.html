@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Rocket landing simulator</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" type="module"></script>
+</head>
+<body>
+  <header>
+    <h1>Rocket landing simulator</h1>
+    <div class="connection"><span id="connection-dot"></span><span id="connection">Connecting</span></div>
+    <button id="help" class="quiet" title="Keyboard shortcuts (?)">Shortcuts <kbd>?</kbd></button>
+  </header>
+  <main>
+    <section class="workspace" aria-label="Flight simulation">
+      <div class="viewbar"><span id="view-label">Flight view</span><div><button id="fit" title="Fit mission (F)">Fit <kbd>F</kbd></button><button id="follow" aria-pressed="false" title="Follow rocket (C)">Follow <kbd>C</kbd></button><button id="zoom-out" aria-label="Zoom out">−</button><output id="zoom">100%</output><button id="zoom-in" aria-label="Zoom in">+</button></div></div>
+      <div class="canvas-wrap"><canvas id="scene" tabindex="0" aria-label="Rocket flight. Drag the landing pad before launch; drag empty space to pan. Use the coordinate fields for keyboard placement."></canvas>
+        <div class="scene-legend"><span class="line"></span>Flight path <span class="target"></span>Target deck</div>
+        <div id="scene-hint">Drag the landing pad to place it. Scroll to zoom.</div>
+      </div>
+      <div class="plot-strip"><div class="plot-heading"><span>Altitude</span><span id="plot-range">Waiting for flight</span></div><canvas id="plot" aria-label="Altitude over simulation time"></canvas><div class="plot-axis"><span>0 s</span><span id="plot-time">0 s</span></div></div>
+    </section>
+    <aside>
+      <section class="flight-status"><div class="section-label">Flight status</div><div class="status-line"><strong id="status">Ready</strong><output id="time">T+ 00.00 s</output></div><p id="status-detail">Place the target, then launch.</p></section>
+      <section class="telemetry"><div class="section-label">Telemetry</div><div class="altitude"><output id="altitude">34.0</output><span>px altitude</span></div>
+        <dl><div><dt>Vertical speed</dt><dd><output id="vy">0.0</output> <span>px/s</span></dd></div><div><dt>Horizontal speed</dt><dd><output id="vx">0.0</output> <span>px/s</span></dd></div><div><dt>Attitude</dt><dd><output id="angle">0.0</output><span>°</span></dd></div><div><dt>Target offset</dt><dd><output id="offset">640.0</output> <span>px</span></dd></div></dl>
+        <div class="fuel-heading"><span>Fuel remaining</span><output id="fuel">100%</output></div><progress id="fuel-bar" value="100" max="100" aria-label="Fuel remaining"></progress><div class="engine"><span id="engine">Engine idle</span><span id="throttle">0% thrust</span></div>
+      </section>
+      <section class="guidance"><div class="section-label">Guidance</div><ol id="phases"><li>Launch</li><li>Ascent</li><li>Coast</li><li>Descent</li><li>Touchdown</li></ol><span id="phase">Awaiting launch</span></section>
+      <section class="setup"><div class="section-label">Landing pad</div><form id="pad-form"><div class="coordinate-row"><label>Center X <span>px</span><input id="pad-x" type="number" min="-1500" max="4000" step="1" value="960" required></label><label>Base Y <span>px</span><input id="pad-y" type="number" min="50" max="600" step="1" value="570" required></label><button id="apply-pad" type="submit">Apply</button></div></form><p class="muted">Y increases downward. Ground is at 600 px.</p></section>
+      <section class="settings"><details><summary>Controller settings</summary><p class="muted">Load settings from a tuning run. Applies before launch.</p><label class="file-button">Load settings JSON<input type="file" id="settings-file" accept=".json,application/json"></label><output id="settings-name">Default controller</output><dl id="settings-values"></dl></details></section>
+    </aside>
+  </main>
+  <footer><div class="flight-actions"><button id="launch" class="primary" disabled>Launch <kbd>Enter</kbd></button><button id="pause" disabled>Pause <kbd>Space</kbd></button><button id="stop" disabled>End flight</button><button id="reset" disabled>Reset</button></div><button id="export" disabled>↓ Export CSV</button></footer>
+  <div id="message" role="status" aria-live="polite" hidden></div>
+  <dialog id="help-dialog"><div class="dialog-heading"><h2>Keyboard shortcuts</h2><button id="close-help" aria-label="Close shortcuts">×</button></div><dl><div><dt>Launch</dt><dd><kbd>Enter</kbd></dd></div><div><dt>Pause / resume</dt><dd><kbd>Space</kbd></dd></div><div><dt>End flight</dt><dd><kbd>R</kbd></dd></div><div><dt>Fit mission</dt><dd><kbd>F</kbd></dd></div><div><dt>Follow rocket</dt><dd><kbd>C</kbd></dd></div><div><dt>Move pad before launch</dt><dd><kbd>W A S D</kbd></dd></div><div><dt>Zoom</dt><dd><kbd>+ / −</kbd></dd></div></dl><p>Drag the pad to move it. Drag empty space to pan. Scroll to zoom around your pointer.</p><p class="muted">Each browser tab has its own flight. Reloading starts a new session; export CSV to keep a recording.</p></dialog>
+</body>
+</html>

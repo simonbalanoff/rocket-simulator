@@ -5,71 +5,28 @@ import json
 import math
 from pathlib import Path
 
-import pymunk
+from autopilot import ControllerSettings
+from recording import FlightRecorder
+from simulation import Simulation, DT
+from physics import FUEL_CAPACITY
 
-from autopilot import Autopilot, ControllerSettings
-from landing_platform import LandingPlatform, PLATFORM_W
-from rocket import Rocket, FUEL_CAPACITY, ROCKET_H
-
-DT = 1 / 120
 SCENARIOS = [(960, 570), (0, 570), (640, 570), (1200, 570), (960, 450)]
-
-
-class FlightRecorder:
-    def __init__(self):
-        self.rows = []
-
-    def record(self, time, telemetry, command, targets, landing_x, surface_y):
-        self.rows.append(dict(time=time, **telemetry, phase=command.phase,
-                              throttle=command.thrust, torque=command.torque,
-                              angle_target=targets.get('angle_target', float('nan')),
-                              vy_target=targets.get('vy_target', float('nan')),
-                              landing_x=landing_x, surface_y=surface_y))
-
-    def save(self, path):
-        if not self.rows:
-            raise ValueError('Cannot save an empty flight')
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open('w', newline='') as stream:
-            writer = csv.DictWriter(stream, fieldnames=list(self.rows[0]))
-            writer.writeheader()
-            writer.writerows(self.rows)
 
 
 def run_mission(x=960, y=570, settings=None, duration=60, record=True):
     if not all(math.isfinite(value) for value in (x, y, duration)) or duration <= 0:
         raise ValueError('duration must be positive')
-    space = pymunk.Space()
-    space.gravity = (0, 980)
-    for a, b, radius in [((-5000, 600), (10000, 600), 5), ((255, 568), (385, 568), 2)]:
-        segment = pymunk.Segment(space.static_body, a, b, radius)
-        segment.friction = 1
-        space.add(segment)
-    platform = LandingPlatform(space, x, y, 600)
-    rocket = Rocket(space, 320, 566 - ROCKET_H / 2, 600)
-    rocket.activate_physics()
-    surface = platform.get_surface_y()
-    rocket.configure_landing_detection(landing_x=x, landing_surface_y=surface,
-        landing_half_w=PLATFORM_W / 2, launch_x=320, launch_surface_y=566, launch_half_w=65)
-    autopilot = Autopilot(surface, x, 566, 320, settings=settings)
-    recorder = FlightRecorder()
-    elapsed = 0.
-    for step in range(max(1, int(duration / DT))):
-        before = rocket.telemetry()
-        command = autopilot.update(before, DT)
-        if record:
-            recorder.record(step * DT, before, command, autopilot.targets, x, surface)
-        rocket.apply_autopilot(command, DT)
-        space.step(DT)
-        rocket.update(DT, True)
-        elapsed = (step + 1) * DT
-        if rocket.landed or rocket.crashed:
+    simulation = Simulation(x, y, settings=settings, record=record)
+    simulation.launch()
+    for _ in range(max(1, int(duration / DT))):
+        simulation.step()
+        if simulation.state == 'finished':
             break
+    rocket = simulation.rocket
+    elapsed, recorder = simulation.elapsed, simulation.recorder
     telemetry = rocket.telemetry()
-    final = autopilot.update(telemetry, DT)
-    if record:
-        recorder.record(elapsed, telemetry, final, {}, x, surface)
+    if record and simulation.state != "finished":
+        simulation.record_terminal()
     summary = dict(outcome='landed' if rocket.landed else 'crashed' if rocket.crashed else 'timeout',
                    elapsed=elapsed, landing_error=abs(telemetry['x'] - x),
                    fuel_used=FUEL_CAPACITY - rocket.fuel,

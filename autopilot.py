@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from rocket import ROCKET_MASS, ROCKET_W, ROCKET_H, THRUST_FORCE
+from physics import ROCKET_MASS, ROCKET_W, ROCKET_H, THRUST_FORCE
 
 G = 980.0
 A_THRUST_MAX = THRUST_FORCE / ROCKET_MASS
@@ -71,7 +71,7 @@ class ControllerSettings:
 
     def __post_init__(self):
         for name, value in vars(self).items():
-            if not math.isfinite(value) or value <= 0:
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be finite and positive")
 
 

@@ -1,19 +1,14 @@
-import pymunk
 import pygame
 import math
 import random
+
+from physics import (RocketPhysics, ROCKET_W, ROCKET_H, ROCKET_MASS,
+                     THRUST_FORCE, FUEL_CAPACITY, FUEL_BURN)
 
 AXIS_LEN = 70
 AXIS_HIT_R = 14
 ARC_R = 48
 
-ROCKET_W = 22
-ROCKET_H = 72
-ROCKET_MASS = 5.0
-
-THRUST_FORCE = 5600.0
-FUEL_CAPACITY = 300.0
-FUEL_BURN = 12.0
 PARTICLE_LIFE = 0.35
 
 
@@ -87,19 +82,10 @@ class Particle:
         screen.blit(surf, (sx - s - 1, sy - s - 1))
 
 
-class Rocket:
+class Rocket(RocketPhysics):
+    """Pygame rendering and input adapter around the shared rigid-body model."""
+
     def __init__(self, space, x, y, ground_y):
-        self.space = space
-        self.ground_y = ground_y
-        self.width = ROCKET_W
-        self.height = ROCKET_H
-
-        self.original_x = float(x)
-        self.original_y = float(y)
-        self.placement_x = float(x)
-        self.placement_y = float(y)
-        self.placement_angle = 0.0
-
         self.drag_mode = None
         self.drag_axis = None
         self.drag_origin = None
@@ -107,103 +93,16 @@ class Rocket:
         self.rotate_start_mouse = None
         self.rotate_start_angle = 0.0
 
-        self.thrusting = False
-        self.fuel = FUEL_CAPACITY
         self.particles = []
-        self.landed = False
-        self.crashed = False
-        self._landing_detection = None
-        self._previous_velocity = (0.0, 0.0)
-
-        self.body = None
-        self.shape = None
-        self.build_kinematic(x, y)
-
-    def build_kinematic(self, x, y):
-        if self.body is not None and self.shape in self.space.shapes:
-            self.space.remove(self.shape, self.body)
-        self.body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
-        self.body.position = (x, y)
-        self.body.angle = self.placement_angle
-        self.shape = pymunk.Poly.create_box(self.body, (self.width, self.height))
-        self.shape.friction = 0.9
-        self.shape.elasticity = 0.05
-        self.space.add(self.body, self.shape)
-
-    def activate_physics(self):
-        x, y = self.body.position
-        angle = self.body.angle
-        if self.shape in self.space.shapes:
-            self.space.remove(self.shape, self.body)
-        moment = pymunk.moment_for_box(ROCKET_MASS, (self.width, self.height))
-        self.body = pymunk.Body(ROCKET_MASS, moment)
-        self.body.position = (x, y)
-        self.body.angle = angle
-        self.shape = pymunk.Poly.create_box(self.body, (self.width, self.height))
-        self.shape.friction = 0.9
-        self.shape.elasticity = 0.05
-        self.space.add(self.body, self.shape)
-        self.landed = False
-        self.crashed = False
-        self.fuel = FUEL_CAPACITY
-
-    def save_placement(self):
-        self.placement_x = float(self.body.position.x)
-        self.placement_y = float(self.body.position.y)
-        self.placement_angle = self.body.angle
+        super().__init__(space, x, y, ground_y)
 
     def reset(self, to_original=False):
-        if to_original:
-            self.placement_x = self.original_x
-            self.placement_y = self.original_y
-            self.placement_angle = 0.0
-        self.thrusting = False
-        self.fuel = FUEL_CAPACITY
+        super().reset(to_original)
         self.particles.clear()
-        self.landed = False
-        self.crashed = False
-        self._landing_detection = None
-        self.build_kinematic(self.placement_x, self.placement_y)
-
-    def configure_landing_detection(
-            self,
-            *,
-            landing_x,
-            landing_surface_y,
-            landing_half_w,
-            launch_x,
-            launch_surface_y,
-            launch_half_w,
-    ):
-        self._landing_detection = {
-            "landing_x": float(landing_x),
-            "landing_surface_y": float(landing_surface_y),
-            "landing_half_w": float(landing_half_w),
-            "launch_x": float(launch_x),
-            "launch_surface_y": float(launch_surface_y),
-            "launch_half_w": float(launch_half_w),
-        }
-
-    def apply_autopilot(self, command, dt):
-        self.thrusting = False
-        self._previous_velocity = tuple(self.body.velocity)
-        if self.landed or self.crashed or dt <= 0:
-            return
-        throttle = max(0.0, min(1.0, command.thrust))
-        throttle = min(throttle, self.fuel / (FUEL_BURN * dt))
-        if throttle > 0:
-            self.thrusting = True
-            self.fuel = max(0.0, self.fuel - FUEL_BURN * dt * throttle)
-            dx, dy = local_y(self.body.angle)
-            f = THRUST_FORCE * throttle
-            self.body.apply_force_at_world_point((f * dx, f * dy), self.body.position)
-            self.spawn_particles()
-        self.body.torque += command.torque
 
     def update(self, dt, simulating):
-        if simulating and not self.landed and not self.crashed:
-            self.check_landing()
-        self.particles = [p for p in self.particles if p.update(dt)]
+        super().update(dt, simulating)
+        self.particles = [particle for particle in self.particles if particle.update(dt)]
 
     def spawn_particles(self):
         angle = self.body.angle
@@ -216,63 +115,6 @@ class Rocket:
             vx = -dx * random.uniform(80, 140) + px * spread + self.body.velocity.x * 0.3
             vy = -dy * random.uniform(80, 140) + py * spread + self.body.velocity.y * 0.3
             self.particles.append(Particle(nx, ny, vx, vy))
-
-    def check_landing(self):
-        # Contact is required: proximity alone must never complete a mission.
-        contacts = []
-        self.body.each_arbiter(lambda arbiter: contacts.append(arbiter))
-        if not contacts:
-            return
-        bx, by = self.body.position
-        angle = abs((self.body.angle + math.pi) % math.tau - math.pi)
-        bottom_y = by + (self.height / 2) * math.cos(self.body.angle)
-        speed = max(self.body.velocity.length, math.hypot(*self._previous_velocity))
-        ld = self._landing_detection
-        if ld is None:
-            self.crashed = True
-            return
-        # Ignore the launch support while the engine lifts off.
-        if (abs(bx - ld["launch_x"]) <= ld["launch_half_w"]
-                and abs(bottom_y - ld["launch_surface_y"]) < 6
-                and self.thrusting):
-            return
-        on_target = (
-            abs(bx - ld["landing_x"]) + self.width / 2 <= ld["landing_half_w"]
-            and abs(bottom_y - ld["landing_surface_y"]) < 6
-        )
-        if on_target and speed < 30 and angle < math.radians(10):
-            self.landed = True
-            self.thrusting = False
-            self.body.velocity = (0, 0)
-            self.body.angular_velocity = 0
-        else:
-            self.crashed = True
-            self.thrusting = False
-
-    def telemetry(self):
-        bx, by = self.body.position
-        vx, vy = self.body.velocity
-        speed = math.hypot(vx, vy)
-        bottom_y = by + (self.height / 2) * math.cos(self.body.angle)
-        alt = max(0.0, self.ground_y - bottom_y)
-        angle_d = math.degrees(self.body.angle) % 360
-        omega_deg_s = math.degrees(float(self.body.angular_velocity))
-        return {
-            "x": bx,
-            "y": by,
-            "bottom_y": bottom_y,
-            "altitude": alt,
-            "vel_x": vx,
-            "vel_y": vy,
-            "speed": speed,
-            "angle": angle_d,
-            "omega_deg_s": omega_deg_s,
-            "fuel": self.fuel,
-            "fuel_pct": self.fuel / FUEL_CAPACITY,
-            "thrusting": self.thrusting,
-            "landed": self.landed,
-            "crashed": self.crashed,
-        }
 
     def draw(self, screen, pan_x=0.0, pan_y=0.0, zoom=1.0):
         for p in self.particles:
